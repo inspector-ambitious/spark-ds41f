@@ -1,0 +1,18 @@
+diff --git a/vllm/v1/structured_output/__init__.py b/vllm/v1/structured_output/__init__.py
+--- a/vllm/v1/structured_output/__init__.py
++++ b/vllm/v1/structured_output/__init__.py
+@@ -204,6 +204,14 @@
+     ) -> None:
+         assert self._grammar_bitmask is not None
+         for grammar, index, apply_bitmask in batch:
++            if index >= self._grammar_bitmask.shape[0]:
++                # spark fix: grow the bitmask if speculative-decode scheduling
++                # needs one more row than max_num_seqs*(1+num_spec) (upstream
++                # off-by-one). Over-allocation is sliced off by the caller.
++                assert self.backend is not None
++                _grown = self.backend.allocate_token_bitmask(index + 1)
++                _grown[: self._grammar_bitmask.shape[0]] = self._grammar_bitmask
++                self._grammar_bitmask = _grown
+             if apply_bitmask and not grammar.is_terminated():
+                 grammar.fill_bitmask(self._grammar_bitmask, index)
+             else:
