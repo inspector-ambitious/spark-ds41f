@@ -42,3 +42,5 @@
 0042-dspark-drafter-padding-rows.patch
 0043-tilelang-decode-tiles.patch
 0044-tilelang-prefetch-scale-words.patch
+0045-fix-grammar-bitmask-grow.patch
+0046-thinking-budget-topp-overflow.patch

@@ -1,0 +1,29 @@
+diff --git a/vllm/v1/worker/gpu/sample/sampler.py b/vllm/v1/worker/gpu/sample/sampler.py
+index cdcd3a8..3fe8618 100644
+--- a/vllm/v1/worker/gpu/sample/sampler.py
++++ b/vllm/v1/worker/gpu/sample/sampler.py
+@@ -388,6 +388,24 @@ class Sampler:
+             expanded_local_pos,
+         )
+ 
++        # The budget kernel forces the end marker by setting its logit to 1e9.
++        # That finite boost is picked fine under greedy (plain argmax), but at
++        # temperature>0 it flows into the top-k/top-p softmax where exp(1e9)
++        # overflows to NaN, masks the whole row, and sampling degenerates to
++        # token id 0 -- so the forced </think> never commits and the model loops
++        # past its thinking budget. Convert the boost into a hard one-hot
++        # (forced row -> -inf everywhere, forced token -> 0) so every sampling
++        # path (greedy, random, flashinfer) selects the marker with no exp
++        # overflow. 1e9 is a sentinel no natural logit reaches.
++        tb = self.thinking_budget_state
++        if tb.enabled and bool(np.any(tb.use_thinking_budget[idx_mapping_np])):
++            forced_rows = logits.amax(dim=-1) >= 1.0e9
++            if bool(torch.any(forced_rows)):
++                forced_tok = logits[forced_rows].argmax(dim=-1)
++                row_ids = forced_rows.nonzero(as_tuple=True)[0]
++                logits[forced_rows] = float("-inf")
++                logits[row_ids, forced_tok] = 0.0
++
+         if not skip_temperature:
+             # Apply temperature in place.
+             self.sampling_states.apply_temperature(
